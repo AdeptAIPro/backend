@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Candidate Search & Job Listings</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        input, button {
+            padding: 8px;
+            margin: 5px;
+            width: 300px;
+        }
+        .candidate, .job {
+            border: 1px solid #ccc;
+            padding: 15px;
+            margin-top: 10px;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+        }
+        .job {
+            background-color: #f0f7ff;
+        }
+        .section {
+            margin-bottom: 30px;
+        }
+        .job-details {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #fff;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            display: none;
+        }
+        .job-details.visible {
+            display: block;
+        }
+        .tabs {
+            margin-bottom: 20px;
+        }
+        .tab-button {
+            padding: 10px 20px;
+            margin-right: 10px;
+            border: none;
+            background-color: #eee;
+            cursor: pointer;
+        }
+        .tab-button.active {
+            background-color: #007bff;
+            color: white;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        .loading {
+            text-align: center;
+            padding: 20px;
+            font-style: italic;
+            color: #666;
+        }
+        .error {
+            color: #dc3545;
+            padding: 10px;
+            border: 1px solid #dc3545;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .job-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .job-card {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 15px;
+            background-color: #fff;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .job-card h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        .job-card p {
+            margin: 5px 0;
+            color: #666;
+        }
+        .job-card button {
+            width: 100%;
+            padding: 8px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        .job-card button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <h1>Recruitment Dashboard</h1>
+    
+    <div class="tabs">
+        <button class="tab-button active" onclick="showTab('search')">Candidate Search</button>
+        <button class="tab-button" onclick="showTab('jobs')">Job Listings</button>
+    </div>
+
+    <div id="searchTab" class="tab-content active">
+        <h2>Candidate Search</h2>
+        <input type="text" id="queryInput" placeholder="Enter job description...">
+        <button onclick="submitQuery()">Search</button>
+        <div id="summary"></div>
+        <div id="results"></div>
+    </div>
+
+    <div id="jobsTab" class="tab-content">
+        <h2>CEIPAL Job Listings</h2>
+        <button onclick="fetchJobs()">Refresh Jobs</button>
+        <div id="jobsList" class="job-grid"></div>
+    </div>
+
+    <script>
+        // Update the API base URL to match the Flask server
+        const API_BASE_URL = window.location.origin;
+
+        // Show/hide tabs
+        function showTab(tabName) {
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('.tab-button').forEach(button => {
+                button.classList.remove('active');
+            });
+            document.getElementById(tabName + 'Tab').classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        // Toggle job details
+        function toggleJobDetails(jobCode) {
+            const detailsDiv = document.getElementById(`job-details-${jobCode}`);
+            if (detailsDiv.classList.contains('visible')) {
+                detailsDiv.classList.remove('visible');
+                return;
+            }
+
+            // Fetch job details if not already loaded
+            if (!detailsDiv.hasAttribute('data-loaded')) {
+                fetchJobDetails(jobCode);
+            } else {
+                detailsDiv.classList.add('visible');
+            }
+        }
+
+        // Fetch job details
+        async function fetchJobDetails(jobCode) {
+            const detailsDiv = document.getElementById(`job-details-${jobCode}`);
+            detailsDiv.innerHTML = '<div class="loading">Loading job details...</div>';
+            detailsDiv.classList.add('visible');
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/v1/ceipal/getJobDetails?job_code=${jobCode}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+                
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                const jobDetails = data.job_details;
+                
+                detailsDiv.innerHTML = `
+                    <h3>Job Details</h3>
+                    <p><strong>Title:</strong> ${jobDetails.job_title || 'N/A'}</p>
+                    <p><strong>Location:</strong> ${jobDetails.location || 'N/A'}</p>
+                    <p><strong>Job Type:</strong> ${jobDetails.job_type || 'N/A'}</p>
+                    <p><strong>Experience:</strong> ${jobDetails.experience || 'N/A'}</p>
+                    <p><strong>Skills:</strong> ${jobDetails.skills || 'N/A'}</p>
+                    <p><strong>Description:</strong> ${jobDetails.job_description || 'N/A'}</p>
+                    <p><strong>Bill Rate:</strong> ${jobDetails.bill_rate || 'N/A'}</p>
+                    <p><strong>Pay Rate:</strong> ${jobDetails.pay_rate || 'N/A'}</p>
+                    <p><strong>Start Date:</strong> ${jobDetails.job_start_date || 'N/A'}</p>
+                    <p><strong>End Date:</strong> ${jobDetails.job_end_date || 'N/A'}</p>
+                `;
+                
+                detailsDiv.setAttribute('data-loaded', 'true');
+            } catch (error) {
+                console.error('Error fetching job details:', error);
+                detailsDiv.innerHTML = `<div class="error">Error loading job details: ${error.message}</div>`;
+            }
+        }
+
+        // Fetch all jobs
+        async function fetchJobs() {
+            const jobsList = document.getElementById('jobsList');
+            jobsList.innerHTML = '<div class="loading">Loading jobs...</div>';
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/v1/ceipal/jobs`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                if (!data.jobs || data.jobs.length === 0) {
+                    jobsList.innerHTML = '<p>No jobs available.</p>';
+                    return;
+                }
+
+                jobsList.innerHTML = '';
+                data.jobs.forEach(job => {
+                    const div = document.createElement('div');
+                    div.className = 'job-card';
+                    div.innerHTML = `
+                        <h3>${job.job_title || 'Untitled Position'}</h3>
+                        <p><strong>Job Code:</strong> ${job.job_code || 'N/A'}</p>
+                        <p><strong>Location:</strong> ${job.location || 'N/A'}</p>
+                        <p><strong>Job Type:</strong> ${job.job_type || 'N/A'}</p>
+                        <p><strong>Experience:</strong> ${job.experience || 'N/A'}</p>
+                        <button onclick="toggleJobDetails('${job.job_code}')">View Details</button>
+                        <div id="job-details-${job.job_code}" class="job-details"></div>
+                    `;
+                    jobsList.appendChild(div);
+                });
+            } catch (error) {
+                console.error('Error fetching jobs:', error);
+                jobsList.innerHTML = `<div class="error">Error loading jobs: ${error.message}</div>`;
+            }
+        }
+
+        // Original search function
+        async function submitQuery() {
+            const query = document.getElementById('queryInput').value.trim();
+            if (!query) {
+                alert("Please enter a query!");
+                return;
+            }
+
+            document.getElementById('summary').innerHTML = '<div class="loading">Searching...</div>';
+            document.getElementById('results').innerHTML = "";
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/search`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+
+                if (data.error) {
+                    document.getElementById('summary').innerHTML = `<div class="error">Error: ${data.error}</div>`;
+                    return;
+                }
+
+                document.getElementById('summary').innerHTML = `<b>Summary:</b> ${data.summary}`;
+
+                const resultsDiv = document.getElementById('results');
+                if (data.results.length === 0) {
+                    resultsDiv.innerHTML = "<p>No matching candidates found.</p>";
+                    return;
+                }
+
+                data.results.forEach(candidate => {
+                    const div = document.createElement('div');
+                    div.className = 'candidate';
+                    div.innerHTML = `
+                        <b>${candidate.FullName}</b> (${candidate.email})<br>
+                        <b>Skills:</b> ${candidate.Skills.join(', ')}<br>
+                        <b>Experience:</b> ${candidate.Experience}<br>
+                        <b>Score:</b> ${candidate.Score}, <b>Grade:</b> ${candidate.Grade}<br>
+                        <b>Source:</b> ${candidate.SourceURL || 'N/A'}
+                    `;
+                    resultsDiv.appendChild(div);
+                });
+            } catch (error) {
+                document.getElementById('summary').innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
+
+        // Load jobs when the page loads
+        document.addEventListener('DOMContentLoaded', fetchJobs);
+    </script>
+</body>
+</html> 

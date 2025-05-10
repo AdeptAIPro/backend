@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Talent Search</title>
+</head>
+<body>
+    <h1>Search Candidates</h1>
+    <input type="text" id="searchQuery" placeholder="Enter your search query">
+    <button onclick="performSearch()">Search</button>
+
+    <div id="results"></div>
+
+    <script>
+        async function performSearch() {
+            const query = document.getElementById('searchQuery').value;
+            const response = await fetch('http://127.0.0.1:5055/search', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: query, algorithm: 'semantic' })
+            });
+            const data = await response.json();
+            document.getElementById('results').innerText = JSON.stringify(data, null, 2);
+        }
+    </script>
+</body>
+</html>

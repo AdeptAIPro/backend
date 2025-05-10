@@ -1,0 +1,9 @@
+beautifulsoup4
+selenium
+linkedin-api
+requests
+openai
+scikit-learn
+joblib
+numpy
+pandas

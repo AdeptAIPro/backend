@@ -1,0 +1,577 @@
+# import os
+# import sys
+# import boto3
+# import numpy as np
+# from sentence_transformers import SentenceTransformer, util
+# import openai
+
+# # Get OpenAI API key from environment
+# api_key = os.getenv("OPENAI_API_KEY")
+# if not api_key:
+#     sys.exit("❌ ERROR: OPENAI_API_KEY environment variable is not set.")
+
+# # Initialize OpenAI client (new API >=1.0.0)
+# client = openai.OpenAI(api_key=api_key)
+
+# # Connect to DynamoDB
+# dynamodb = boto3.resource(
+#     'dynamodb',
+#     aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+#     aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+#     region_name='ap-south-1'
+# )
+# table = dynamodb.Table('resume_metadata')
+
+# # Load sentence transformer model
+# model = SentenceTransformer('all-MiniLM-L6-v2')
+
+# def retrieve_top_documents(user_input, top_k=3):
+#     query_embedding = model.encode(user_input)
+#     try:
+#         response = table.scan()
+#     except Exception as e:
+#         sys.exit(f"❌ ERROR: Failed to scan DynamoDB table → {str(e)}")
+
+#     items = response.get('Items', [])
+
+#     scored_docs = []
+#     for item in items:
+#         resume_text = item.get('ResumeText', '')
+#         skills = ' '.join(item.get('Skills', []))
+#         combined_text = resume_text + ' ' + skills
+
+#         doc_embedding = model.encode(combined_text)
+#         semantic_score = util.cos_sim(query_embedding, doc_embedding).item()
+
+#         scored_docs.append({
+#             'text': combined_text,
+#             'metadata': item,
+#             'score': semantic_score
+#         })
+
+#     # Sort by score and return top_k
+#     scored_docs.sort(key=lambda x: x['score'], reverse=True)
+#     return scored_docs[:top_k]
+
+# def generate_answer(user_query, context_docs):
+#     context_text = "\n\n".join([doc['text'] for doc in context_docs])
+#     prompt = f"""
+# You are an expert recruitment assistant. Based on the following resumes and skills, answer the user's question.
+
+# Resumes and Skills:
+# {context_text}
+
+# User Query:
+# {user_query}
+
+# Answer:"""
+
+#     try:
+#         response = client.chat.completions.create(
+#             model="gpt-3.5-turbo",
+#             messages=[{"role": "user", "content": prompt}],
+#             max_tokens=500,
+#             temperature=0.3,
+#         )
+#         return response.choices[0].message.content
+#     except openai.AuthenticationError as e:
+#         sys.exit(f"❌ ERROR: Authentication failed → {str(e)}")
+#     except Exception as e:
+#         sys.exit(f"❌ ERROR: Failed to call OpenAI API → {str(e)}")
+
+# if __name__ == "__main__":
+#     user_query = "Find candidates with Python and AWS experience"
+#     top_docs = retrieve_top_documents(user_query, top_k=3)
+
+#     if top_docs:
+#         answer = generate_answer(user_query, top_docs)
+#         print("\n--- Retrieved Documents ---")
+#         for doc in top_docs:
+#             print(f"\nCandidate: {doc['metadata'].get('FullName')}\nScore: {doc['score']:.4f}")
+
+#         print("\n--- Generated Answer ---")
+#         print(answer)
+#     else:
+#         print("No matching documents found.")
+        
+
+
+# import os
+# import sys
+# import boto3
+# import numpy as np
+# from sentence_transformers import SentenceTransformer, util
+
+# # Connect to DynamoDB
+# dynamodb = boto3.resource(
+#     'dynamodb',
+#     aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+#     aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+#     region_name='ap-south-1'
+# )
+# table = dynamodb.Table('resume_metadata')
+
+# # Load sentence transformer model
+# model = SentenceTransformer('all-MiniLM-L6-v2')
+
+# def retrieve_top_documents(user_input, top_k=3):
+#     query_embedding = model.encode(user_input)
+#     try:
+#         response = table.scan()
+#     except Exception as e:
+#         print(f"❌ ERROR: Failed to scan DynamoDB table → {str(e)}")
+#         return []
+
+#     items = response.get('Items', [])
+
+#     scored_docs = []
+#     for item in items:
+#         resume_text = item.get('ResumeText', '')
+#         skills = ' '.join(item.get('Skills', []))
+#         combined_text = resume_text + ' ' + skills
+
+#         doc_embedding = model.encode(combined_text)
+#         semantic_score = util.cos_sim(query_embedding, doc_embedding).item()
+
+#         scored_docs.append({
+#             'text': combined_text,
+#             'metadata': item,
+#             'score': semantic_score
+#         })
+
+#     # Sort by score and return top_k
+#     scored_docs.sort(key=lambda x: x['score'], reverse=True)
+#     return scored_docs[:top_k]
+
+# if __name__ == "__main__":
+#     user_query = "Find candidates Aaron Feinberg"
+#     top_docs = retrieve_top_documents(user_query, top_k=3)
+
+#     if top_docs:
+#         print("\n--- Retrieved Documents ---")
+#         for doc in top_docs:
+#             print(f"\nCandidate: {doc['metadata'].get('FullName')}")
+#             print(f"Email: {doc['metadata'].get('email')}")
+#             print(f"Skills: {doc['metadata'].get('Skills')}")
+#             print(f"Experience: {doc['metadata'].get('Experience')}")
+#             print(f"Score: {doc['score']:.4f}")
+#     else:
+#         print("No matching documents found.")
+
+
+
+# *************** RAG code with threshold value******************************************************************** 
+
+
+
+
+
+# import os
+# import sys
+# import boto3
+# import numpy as np
+# from sentence_transformers import SentenceTransformer, util
+
+
+# # Connect to DynamoDB
+# dynamodb = boto3.resource(
+#     'dynamodb',
+#     aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+#     aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+#     region_name='ap-south-1'
+# )
+# table = dynamodb.Table('resume_metadata')
+
+# # Load sentence transformer model
+# model = SentenceTransformer('all-MiniLM-L6-v2')
+
+# def retrieve_top_documents(user_input, top_k=3, threshold=0.0):
+#     query_embedding = model.encode(user_input)
+#     try:
+#         response = table.scan()
+#     except Exception as e:
+#         print(f"❌ ERROR: Failed to scan DynamoDB table → {str(e)}")
+#         return []
+
+#     items = response.get('Items', [])
+
+#     scored_docs = []
+#     for item in items:
+#         resume_text = item.get('ResumeText', '')
+#         skills = ' '.join(item.get('Skills', []))
+#         combined_text = resume_text + ' ' + skills
+
+#         doc_embedding = model.encode(combined_text)
+#         semantic_score = util.cos_sim(query_embedding, doc_embedding).item()
+
+#         # Apply threshold filter
+#         if semantic_score >= threshold:
+#             scored_docs.append({
+#                 'text': combined_text,
+#                 'metadata': item,
+#                 'score': semantic_score
+#             })
+
+#     # Sort by score and return top_k
+#     scored_docs.sort(key=lambda x: x['score'], reverse=True)
+#     return scored_docs[:top_k]
+
+# if __name__ == "__main__":
+#     user_query = "Find 3 year experience candidates"
+#     # You can change threshold here (example: 0.6 or 0.7)
+#     top_docs = retrieve_top_documents(user_query, top_k=3, threshold=0.0)
+
+#     if top_docs:
+#         print("\n--- Retrieved Documents ---")
+#         for doc in top_docs:
+#             print(f"\nCandidate: {doc['metadata'].get('FullName')}")
+#             print(f"Email: {doc['metadata'].get('email')}")
+#             print(f"Skills: {doc['metadata'].get('Skills')}")
+#             print(f"Experience: {doc['metadata'].get('Experience')}")
+#             print(f"Score: {doc['score']:.4f}")
+#     else:
+#         print("No matching documents found.")
+
+
+
+# import os
+# import sys
+# import boto3
+# import numpy as np
+# from decimal import Decimal
+# from sentence_transformers import SentenceTransformer, util
+
+# # Connect to DynamoDB
+# dynamodb = boto3.resource(
+#     'dynamodb',
+#     aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+#     aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+#     region_name='ap-south-1'
+# )
+# table = dynamodb.Table('resume_metadata')
+
+# # Load sentence transformer model
+# model = SentenceTransformer('all-MiniLM-L6-v2')
+
+# def retrieve_top_documents(user_input, top_k=3, threshold=0.5):
+#     query_embedding = model.encode(user_input)
+#     try:
+#         response = table.scan()
+#     except Exception as e:
+#         print(f"❌ ERROR: Failed to scan DynamoDB table → {str(e)}")
+#         return []
+
+#     items = response.get('Items', [])
+
+#     scored_docs = []
+#     for item in items:
+#         resume_text = item.get('ResumeText', '')
+#         skills = ' '.join(item.get('Skills', []))
+        
+#         # Safely extract experience
+#         raw_experience = item.get('Experience')
+#         if isinstance(raw_experience, Decimal):
+#             experience = int(raw_experience)
+#         elif isinstance(raw_experience, int):
+#             experience = raw_experience
+#         else:
+#             experience = 0  # fallback if missing
+
+#         # Combined text with experience included
+#         combined_text = resume_text + ' ' + skills + f' {experience} years experience'
+
+#         # Individual embeddings
+#         resume_embedding = model.encode(resume_text)
+#         skills_embedding = model.encode(skills)
+#         experience_embedding = model.encode(f"{experience} years experience")
+
+#         # Individual scores
+#         resume_score = util.cos_sim(query_embedding, resume_embedding).item()
+#         skills_score = util.cos_sim(query_embedding, skills_embedding).item()
+#         experience_score = util.cos_sim(query_embedding, experience_embedding).item()
+
+#         # Combined boosted score
+#         combined_score = 0.4 * resume_score + 0.4 * skills_score + 0.2 * experience_score
+
+#         # Apply threshold filter
+#         if combined_score >= threshold:
+#             scored_docs.append({
+#                 'text': combined_text,
+#                 'metadata': item,
+#                 'score': combined_score,
+#                 'resume_score': resume_score,
+#                 'skills_score': skills_score,
+#                 'experience_score': experience_score
+#             })
+
+#     # Sort by combined score and return top_k
+#     scored_docs.sort(key=lambda x: x['score'], reverse=True)
+#     return scored_docs[:top_k]
+
+# if __name__ == "__main__":
+#     user_query = "js developer"
+    
+#     top_docs = retrieve_top_documents(user_query, top_k=3, threshold=0.5)
+
+#     if top_docs:
+#         print("\n--- Retrieved Documents ---")
+#         for doc in top_docs:
+#             metadata = doc['metadata']
+#             experience = metadata.get('Experience')
+#             if isinstance(experience, Decimal):
+#                 experience = int(experience)
+#             print(f"\nCandidate: {metadata.get('FullName')}")
+#             print(f"Email: {metadata.get('email')}")
+#             print(f"Skills: {metadata.get('Skills')}")
+#             print(f"Experience: {metadata.get('experience')}")
+#             print(f"Combined Score: {doc['score']:.4f}")
+#             # print(f"Resume Score: {doc['resume_score']:.4f}")
+#             # print(f"Skills Score: {doc['skills_score']:.4f}")
+#             # print(f"Experience Score: {doc['experience_score']:.4f}")
+#     else:
+#         print("No matching documents found.")
+
+#######################################################################################################################################
+import os
+import sys
+import boto3
+import numpy as np
+from decimal import Decimal
+from sentence_transformers import SentenceTransformer, util
+
+# Connect to DynamoDB
+dynamodb = boto3.resource(
+    'dynamodb',
+    aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+    aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+    region_name='ap-south-1'
+)
+table = dynamodb.Table('resume_metadata')
+
+# Optional feedback table (can fail gracefully)
+try:
+    feedback_table = dynamodb.Table('resume_feedback')
+except Exception:
+    feedback_table = None
+
+# Load sentence transformer model
+model = SentenceTransformer('all-MiniLM-L6-v2')
+
+# Initial weights
+score_weights = {'resume': 0.4, 'skills': 0.4, 'experience': 0.2}
+
+def normalize_score(score, min_value=0, max_value=1, scale_min=1, scale_max=100):
+    # Normalize score from [min_value, max_value] to [scale_min, scale_max]
+    normalized = (score - min_value) / (max_value - min_value)
+    scaled = normalized * (scale_max - scale_min) + scale_min
+    return int(round(scaled))
+
+def retrieve_top_documents(user_input, top_k=10, threshold=0.1):
+    global score_weights
+
+    score_weights = get_updated_weights_from_feedback()
+    query_embedding = model.encode(user_input)
+
+    try:
+        response = table.scan()
+    except Exception as e:
+        return []
+
+    items = response.get('Items', [])
+
+    scored_docs = []
+    for item in items:
+        resume_text = item.get('ResumeText', '').strip()
+        skills_list = item.get('Skills', [])
+        skills = ' '.join(skills_list).strip()
+        raw_experience = item.get('Experience')
+
+        if not resume_text and not skills:
+            continue
+
+        try:
+            experience = int(raw_experience)
+        except:
+            experience = 0
+
+        resume_embedding = model.encode(resume_text)
+        skills_embedding = model.encode(skills)
+        experience_embedding = model.encode(f"{experience} years experience")
+
+        resume_score = util.cos_sim(query_embedding, resume_embedding).item()
+        skills_score = util.cos_sim(query_embedding, skills_embedding).item()
+        experience_score = util.cos_sim(query_embedding, experience_embedding).item()
+
+        combined_score = (
+            score_weights['resume'] * resume_score +
+            score_weights['skills'] * skills_score +
+            score_weights['experience'] * experience_score
+        )
+
+        if combined_score >= threshold:
+            scored_docs.append({
+                'metadata': item,
+                'score': combined_score,
+                'resume_score': resume_score,
+                'skills_score': skills_score,
+                'experience_score': experience_score,
+                'experience': experience  # pass raw experience for display
+            })
+
+    scored_docs.sort(key=lambda x: x['score'], reverse=True)
+    return scored_docs[:top_k]
+
+def get_updated_weights_from_feedback():
+    if not feedback_table:
+        return score_weights
+    try:
+        feedbacks = feedback_table.scan().get('Items', [])
+        if not feedbacks:
+            return score_weights
+        skills_importance = np.mean([f.get('skills_score', "") for f in feedbacks])
+        resume_importance = np.mean([f.get('resume_score', "") for f in feedbacks])
+        experience_importance = np.mean([f.get('experience_score', "") for f in feedbacks])
+        total = skills_importance + resume_importance + experience_importance
+        return {
+            'resume': resume_importance / total,
+            'skills': skills_importance / total,
+            'experience': experience_importance / total
+        }
+    except Exception:
+        return score_weights
+
+def record_feedback(candidate_id, feedback):
+    if feedback_table:
+        feedback_table.put_item(Item={
+            'CandidateID': candidate_id,
+            'feedback': feedback
+        })
+
+if __name__ == "__main__":
+    user_query = "we are lokking for a python developer"
+    top_docs = retrieve_top_documents(user_query, top_k=10, threshold=0.1)
+
+    if top_docs:
+        print("\n--- Top 10 Matching Candidates ---")
+        for idx, doc in enumerate(top_docs, start=1):
+            metadata = doc['metadata']
+            full_name = metadata.get('FullName', 'N/A')
+            email = metadata.get('email', 'N/A')
+            skills = metadata.get('Skills', [])
+            experience = doc.get('experience')
+            score = doc['score']
+
+            # Convert score to 1–100
+            score_100 = normalize_score(score)
+
+            print(f"\n#{idx}")
+            print(f"Candidate: {full_name}")
+            print(f"Email: {email}")
+            print(f"Skills: {skills}")
+            print(f"Experience: {experience} years")
+            print(f"Score: {score_100}")
+    else:
+        print("No matching documents found.")
+
+
+
+
+
+
+***************************************************************************************************************************************************
+
+
+
+import os
+import boto3
+from sentence_transformers import SentenceTransformer, util
+
+# Connect to DynamoDB using boto3 and environment variables for AWS credentials
+dynamodb = boto3.resource(
+    'dynamodb',
+    aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+    aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+    region_name='ap-south-1'
+)
+table = dynamodb.Table('resume_metadata')
+
+# Load pre-trained sentence transformer model for semantic similarity
+model = SentenceTransformer('all-MiniLM-L6-v2')
+
+def nlrga_grade(score_int):
+    """NLRAG grading logic based on score"""
+    if score_int >= 85:
+        return 'A'
+    elif score_int >= 70:
+        return 'B'
+    elif score_int >= 50:
+        return 'C'
+    else:
+        return 'D'
+
+def semantic_search(user_input, top_k=5):
+    """
+    Perform semantic search + NLRAG grading over resumes stored in DynamoDB.
+    """
+    response = table.scan()
+    items = response.get('Items', [])
+
+    documents = []
+    for item in items:
+        resume_text = item.get('ResumeText', '')
+        skills = " ".join(item.get('Skills', []))
+        combined_text = f"{resume_text} {skills}"
+        documents.append((item, combined_text))
+
+    user_embedding = model.encode(user_input, convert_to_tensor=True)
+    doc_texts = [text for _, text in documents]
+    doc_embeddings = model.encode(doc_texts, convert_to_tensor=True)
+
+    cosine_scores = util.pytorch_cos_sim(user_embedding, doc_embeddings)[0]
+
+    top_results = sorted(
+        zip(documents, cosine_scores),
+        key=lambda x: x[1],
+        reverse=True
+    )[:top_k]
+
+    matching_documents = []
+    for (item, _), score in top_results:
+        experience = item.get('Experience', 0)
+        experience_str = f"{experience} years" if experience else "0 years"
+
+        score_int = int(score.item() * 100)
+        score_int = max(1, min(score_int, 100))
+
+        # Apply NLRAG grading
+        grade = nlrga_grade(score_int)
+
+        matching_documents.append({
+            'FullName': item.get('FullName'),
+            'email': item.get('email'),
+            'phone': item.get('phone'),
+            'Skills': item.get('Skills'),
+            'Experience': experience_str,
+            'SourceURL': item.get('SourceURL'),
+            'Score': score_int,
+            'Grade': grade
+        })
+
+    return matching_documents
+
+if __name__ == "__main__":
+    user_query = "we are looking for a candidate with experience in Python and AWS"
+
+    results = semantic_search(user_query)
+
+    if results:
+        for r in results:
+            print(f"\nName: {r.get('FullName')}\nEmail: {r.get('email')}\nSkills: {r.get('Skills')}\nExperience: {r.get('Experience')}\nScore: {r.get('Score')}\nGrade (NLRAG): {r.get('Grade')}")
+    else:
+        print("No matches found.")
+
+
+
+
+
+

@@ -1,0 +1,368 @@
+# from matcher.enhanced_matcher import EnhancedTalentMatcher
+# from matcher.models import CandidateProfile
+# import os
+
+# # matcher = EnhancedTalentMatcher(
+# #     openai_api_key="your-api-key",
+# #     linkedin_username="your-linkedin-username",
+# #     linkedin_password="your-linkedin-password"
+# # )
+
+# matcher = EnhancedTalentMatcher(
+#     openai_api_key=os.getenv("OPENAI_API_KEY"),
+#     linkedin_username=os.getenv("LINKEDIN_USERNAME"),
+#     linkedin_password=os.getenv("LINKEDIN_PASSWORD")
+# )
+
+# job_description = """
+# Senior Software Engineer at Healthcare Tech Company
+# Requirements:
+# - 5+ years of Python development
+# - Healthcare industry experience
+# - AWS certification
+# - Located in Boston, MA
+# - Must have active work authorization
+# """
+
+# candidates = [
+#     CandidateProfile(
+#         resume="Resume content with AWS and healthcare...",
+#         linkedin_url="https://linkedin.com/in/candidate1",
+#         current_location="Boston, MA"
+#     ),
+#     CandidateProfile(
+#         resume="Python, Healthcare, AWS certification",
+#         linkedin_url="https://linkedin.com/in/candidate2",
+#         license_number="RN123456",
+#         state="MA",
+#         current_location="Cambridge, MA"
+#     )
+# ]
+
+# top_matches = matcher.find_top_candidates(job_description, candidates, top_n=2)
+
+# for idx, match in enumerate(top_matches, 1):
+#     print(f"\nRank {idx}:")
+#     print(f"Match %: {match['score']['learning_adjusted_score']:.2f}")
+#     print(f"Mandatory Skills Match: {match['score']['mandatory_skills_match']}")
+
+   
+
+
+# *******************************************Keyword search/Lexical search on DynamoDB*************************************************
+
+# import os
+
+# import boto3
+
+# # Connect to DynamoDB
+# dynamodb = boto3.resource(
+#     'dynamodb',
+#     aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+#     aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+#     region_name='ap-south-1'
+# )
+# table = dynamodb.Table('resume_metadata')  # Replace with your actual table name
+
+
+# def keyword_search(user_input):
+#     query_keywords = user_query.lower().split()
+
+#     # Scan the table
+#     response = table.scan()
+#     items = response.get('Items', [])
+
+#     matching_documents = []
+
+#     for item in items:
+#         # Search in ResumeText and Skills (can add more fields)
+#         resume_text = item.get('ResumeText', '').lower()
+#         skills = [skill.lower() for skill in item.get('Skills', [])]
+
+#         # Check if any query keyword appears in resume_text or skills
+#         if any(q in resume_text or q in skills for q in query_keywords):
+#             matching_documents.append({
+#                 'FullName': item.get('FullName'),
+#                 'email': item.get('email'),
+#                 'phone': item.get('phone'),
+#                 'Skills': item.get('Skills'),
+#                 'Experience': str(item.get('Experience')),  # Decimal to string
+#                 'SourceURL': item.get('SourceURL')
+#             })
+
+#     return matching_documents
+
+
+
+# if __name__ == "__main__":
+#     user_query = "feinberg.aaron.d@gmail.com"
+#     results = keyword_search(user_query)
+
+#     if results:
+#         for r in results:
+#             print(f"\nName: {r.get('FullName')}\nEmail: {r.get('email')}\nSkills: {r.get('Skills')}\nExperience: {r.get('Experience')}")
+#     else:
+#         print("No matching profiles found.")
+
+
+
+
+
+
+# import os
+# import boto3
+# from sentence_transformers import SentenceTransformer, util
+# import numpy as np
+# from sklearn.feature_extraction.text import TfidfVectorizer
+
+# # Connect to DynamoDB
+# dynamodb = boto3.resource(
+#     'dynamodb',
+#     aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+#     aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+#     region_name='ap-south-1'
+# )
+# table = dynamodb.Table('resume_metadata')
+
+# # Load sentence transformer model
+# model = SentenceTransformer('all-MiniLM-L6-v2')
+
+# def keyword_search(user_query):
+#     # Scan the table
+#     response = table.scan()
+#     items = response.get('Items', [])
+
+#     if not items:
+#         return []
+
+#     # Prepare documents
+#     documents = []
+#     doc_texts = []
+#     for item in items:
+#         resume_text = item.get('ResumeText', '')
+#         skills = ' '.join(item.get('Skills', []))
+#         combined_text = f"{resume_text} {skills}"
+#         documents.append(item)
+#         doc_texts.append(combined_text)
+
+#     # Semantic search: embed documents + query
+#     doc_embeddings = model.encode(doc_texts, convert_to_tensor=True)
+#     query_embedding = model.encode(user_query, convert_to_tensor=True)
+#     semantic_scores = util.pytorch_cos_sim(query_embedding, doc_embeddings)[0].cpu().numpy()
+
+#     # Keyword search: TF-IDF scores
+#     vectorizer = TfidfVectorizer()
+#     tfidf_matrix = vectorizer.fit_transform(doc_texts + [user_query])
+#     query_vec = tfidf_matrix[-1]
+#     doc_vecs = tfidf_matrix[:-1]
+#     keyword_scores = (doc_vecs * query_vec.T).toarray().flatten()
+
+#     # Combine both scores (simple average)
+#     combined_scores = 0.5 * semantic_scores + 0.5 * keyword_scores
+
+#     # Attach scores to items
+#     results = []
+#     for idx, item in enumerate(documents):
+#         results.append({
+#             'FullName': item.get('FullName'),
+#             'email': item.get('email'),
+#             'phone': item.get('phone'),
+#             'Skills': item.get('Skills'),
+#             'Experience': str(item.get('Experience')),
+#             'SourceURL': item.get('SourceURL'),
+#             'semantic_score': semantic_scores[idx],
+#             'keyword_score': keyword_scores[idx],
+#             'combined_score': combined_scores[idx]
+#         })
+
+#     # Sort by combined score (Hybrid Search)
+#     results.sort(key=lambda x: x['combined_score'], reverse=True)
+
+#     return results
+
+# if __name__ == "__main__":
+#     user_query = "Python developer with machine learning experience"
+#     results = keyword_search(user_query)
+
+#     if results:
+#         for r in results:
+#             print(f"\nName: {r.get('FullName')}\nEmail: {r.get('email')}\nSkills: {r.get('Skills')}\nExperience: {r.get('Experience')}")
+#             print(f"Semantic Score: {r.get('semantic_score'):.4f}, Keyword Score: {r.get('keyword_score'):.4f}, Combined Score: {r.get('combined_score'):.4f}")
+#     else:
+#         print("No matching documents found.")
+
+
+
+#************************************************** Hybrid Search Code + DynamoDB *******************************************************************************
+
+# import os
+# import boto3
+# import numpy as np
+# from sentence_transformers import SentenceTransformer, util
+
+# # Connect to DynamoDB
+# dynamodb = boto3.resource(
+#     'dynamodb',
+#     aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+#     aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+#     region_name='ap-south-1'
+# )
+# table = dynamodb.Table('resume_metadata')
+
+# # Load sentence transformer model
+# model = SentenceTransformer('all-MiniLM-L6-v2')
+
+# def hybrid_search(user_input):
+#     query_keywords = user_input.lower().split()
+
+#     # Get query embedding
+#     query_embedding = model.encode(user_input)
+
+#     # Scan the table
+#     response = table.scan()
+#     items = response.get('Items', [])
+
+#     matching_documents = []
+
+#     for item in items:
+#         resume_text = item.get('ResumeText', '').lower()
+#         skills = ' '.join(item.get('Skills', [])).lower()
+
+#         # ----- Keyword score -----
+#         keyword_score = sum(1 for q in query_keywords if q in resume_text or q in skills)
+
+#         # ----- Semantic score -----
+#         combined_text = resume_text + ' ' + skills
+#         doc_embedding = model.encode(combined_text)
+#         semantic_score = util.cos_sim(query_embedding, doc_embedding).item()
+
+#         # ----- Combine scores -----
+#         combined_score = 0.5 * keyword_score + 0.5 * semantic_score
+
+#         matching_documents.append({
+#             'FullName': item.get('FullName'),
+#             'email': item.get('email'),
+#             'phone': item.get('phone'),
+#             'Skills': item.get('Skills'),
+#             'Experience': str(item.get('Experience')),
+#             'SourceURL': item.get('SourceURL'),
+#             'Score': combined_score
+#         })
+
+#     # Sort results by combined score
+#     matching_documents.sort(key=lambda x: x['Score'], reverse=True)
+
+#     return matching_documents
+
+# if __name__ == "__main__":
+#     user_query = "Waje.bhushan@gmail.com , compassionateliving21@gmail.com , feinberg.aaron.d@gmail.com"
+#     results = hybrid_search(user_query)
+
+#     if results:
+#         for r in results:
+#             print(f"\nName: {r.get('FullName')}\nEmail: {r.get('email')}\nSkills: {r.get('Skills')}\nExperience: {r.get('Experience')}\nScore: {r.get('Score'):.4f}")
+#     else:
+#         print("No matching documents found.")
+
+
+
+
+
+
+#  *************************************Python Code: DynamoDB + Semantic Search****************************************************************
+
+
+import os
+import boto3
+from sentence_transformers import SentenceTransformer, util
+
+# Connect to DynamoDB using boto3 and environment variables for AWS credentials
+dynamodb = boto3.resource(
+    'dynamodb',
+    aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+    aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+    region_name='ap-south-1'
+)
+# Reference the DynamoDB table (replace with your actual table name if different)
+table = dynamodb.Table('resume_metadata')
+
+# Load a pre-trained sentence transformer model for semantic similarity
+model = SentenceTransformer('all-MiniLM-L6-v2')
+
+def semantic_search(user_input, top_k=5):
+    """
+    Perform semantic search over resumes stored in DynamoDB.
+    
+    Args:
+        user_input (str): The search query.
+        top_k (int): Number of top matching resumes to return.
+    
+    Returns:
+        List of matching resumes with similarity scores.
+    """
+    # Scan the entire DynamoDB table to get all resumes (be cautious on large tables)
+    response = table.scan()
+    items = response.get('Items', [])
+
+    # Prepare list of (item, combined_text) for embedding
+    documents = []
+    for item in items:
+        resume_text = item.get('ResumeText', '')
+        skills = " ".join(item.get('Skills', []))  # Combine skills list into a string
+        combined_text = f"{resume_text} {skills}"
+        documents.append((item, combined_text))
+
+    # Generate embedding for the user input query
+    user_embedding = model.encode(user_input, convert_to_tensor=True)
+
+    # Generate embeddings for all resumes
+    doc_texts = [text for _, text in documents]
+    doc_embeddings = model.encode(doc_texts, convert_to_tensor=True)
+
+    # Compute cosine similarity between query and each resume
+    cosine_scores = util.pytorch_cos_sim(user_embedding, doc_embeddings)[0]
+
+    # Sort documents by similarity score (highest first) and select top_k
+    top_results = sorted(
+        zip(documents, cosine_scores),
+        key=lambda x: x[1],
+        reverse=True
+    )[:top_k]
+
+    # Prepare the final list of matching resumes with metadata and scores
+    matching_documents = []
+    for (item, _), score in top_results:
+        # Extract and format experience
+        experience = item.get('Experience', 0)
+        experience_str = f"{experience} years" if experience else "0 years"
+        
+        # Convert score to integer range 1–100
+        score_int = int(score.item() * 100)
+        score_int = max(1, min(score_int, 100))  # Clamp between 1–100
+
+        matching_documents.append({
+            'FullName': item.get('FullName'),
+            'email': item.get('email'),
+            'phone': item.get('phone'),
+            'Skills': item.get('Skills'),
+            'Experience': experience_str,
+            'SourceURL': item.get('SourceURL'),
+            'Score': score_int
+        })
+
+    return matching_documents
+
+
+if __name__ == "__main__":
+    # Example user query: a string of emails (but could be job title, skills, etc.)
+    user_query = "we are lokking for a python developer"
+    
+    # Run the semantic search
+    results = semantic_search(user_query)
+
+    # Display the results or notify if no matches were found
+    if results:
+        for r in results:
+            print(f"\nName: {r.get('FullName')}\nEmail: {r.get('email')}\nSkills: {r.get('Skills')}\nExperience: {r.get('Experience')}\nScore: {r.get('Score')}")
+    else:
+        print("No matches found.")
