@@ -21,9 +21,17 @@ app = Flask(__name__)
 # Enable CORS for all routes
 CORS(app, resources={
     r"/*": {
-        "origins": ["http://localhost:5055", "http://127.0.0.1:5055"],
-        "methods": ["GET", "POST", "OPTIONS"],
-        "allow_headers": ["Content-Type", "Authorization"]
+        "origins": [
+            "http://localhost:8081",
+            "http://127.0.0.1:8081",
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "http://localhost:5055",
+            "http://127.0.0.1:5055"
+        ],
+        "supports_credentials": True,
+        "allow_headers": ["Content-Type", "Authorization", "Accept"],
+        "methods": ["GET", "POST", "OPTIONS"]
     }
 })
 
@@ -65,7 +73,7 @@ class CeipalAuth:
         }
         try:
             logger.info("Attempting CEIPAL authentication...")
-            response = requests.post(self.auth_url, json=payload)
+            response = requests.post(self.auth_url, json=payload, timeout=10)
             response.raise_for_status()
             data = response.json()
             
@@ -75,8 +83,12 @@ class CeipalAuth:
                 logger.info("CEIPAL authentication successful")
                 return True
             else:
-                logger.error(f"CEIPAL authentication failed: {data}")
+                error_msg = data.get("error", "Unknown error")
+                logger.error(f"CEIPAL authentication failed: {error_msg}")
                 return False
+        except requests.exceptions.RequestException as e:
+            logger.error(f"CEIPAL authentication request failed: {str(e)}")
+            return False
         except Exception as e:
             logger.error(f"CEIPAL authentication error: {str(e)}")
             return False
@@ -84,7 +96,7 @@ class CeipalAuth:
     def get_token(self) -> str:
         if not self.token or datetime.now() >= self.token_expiry:
             if not self.authenticate():
-                return None
+                raise Exception("Failed to authenticate with CEIPAL")
         return self.token
 
 class CeipalJobPostingsAPI:
@@ -325,22 +337,50 @@ def home():
 
 @app.route('/search', methods=['POST'])
 def search():
-    data = request.json
-    query = data.get('query', '')
-    algorithm = data.get('algorithm', 'semantic')
+    try:
+        data = request.json
+        query = data.get('query', '')
+        page = data.get('page', 1)
+        page_size = data.get('pageSize', 10)
 
-    if not query:
-        return jsonify({'error': 'Empty query'}), 400
+        if not query:
+            return jsonify({'error': 'Empty query'}), 400
 
-    if algorithm == 'keyword':
-        results, summary = keyword_search(query)
-    else:
+        logger.info(f"Processing search request: query='{query}', page={page}, page_size={page_size}")
+        
+        # Perform the search
         results, summary = semantic_search(query)
+        
+        # Calculate pagination
+        start_idx = (page - 1) * page_size
+        end_idx = start_idx + page_size
+        paginated_results = results[start_idx:end_idx]
 
-    return jsonify({
-        'results': results,
-        'summary': summary
-    })
+        # Ensure each candidate has all required fields for the frontend
+        for candidate in paginated_results:
+            candidate.setdefault('FullName', '')
+            candidate.setdefault('email', '')
+            candidate.setdefault('phone', '')
+            candidate.setdefault('Skills', [])
+            candidate.setdefault('Experience', '')
+            candidate.setdefault('SourceURL', '')
+            candidate.setdefault('Score', 0)
+            candidate.setdefault('Grade', '')
+
+        response_data = {
+            'results': paginated_results,
+            'summary': summary,
+            'total': len(results),
+            'page': page,
+            'pageSize': page_size,
+            'hasMore': end_idx < len(results)
+        }
+
+        logger.info(f"Search completed: found {len(results)} results, returning {len(paginated_results)}")
+        return jsonify(response_data)
+    except Exception as e:
+        logger.error(f"Error in search endpoint: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/feedback', methods=['POST'])
 def submit_feedback():
@@ -368,16 +408,32 @@ def get_ceipal_jobs():
 def get_job_details():
     job_code = request.args.get('job_code')
     if not job_code:
+        logger.error("Missing job_code parameter")
         return jsonify({"error": "Missing job_code parameter"}), 400
     
     try:
+        logger.info(f"Fetching job details for job code: {job_code}")
         auth = CeipalAuth()
+        if not auth.authenticate():
+            logger.error("Failed to authenticate with CEIPAL")
+            return jsonify({"error": "Failed to authenticate with CEIPAL"}), 401
+
         api = CeipalJobPostingsAPI(auth)
         job_details = api.get_job_details(job_code)
+        
+        if not job_details:
+            logger.error(f"No job details found for job code: {job_code}")
+            return jsonify({"error": "No job details found"}), 404
+
+        logger.info(f"Successfully fetched job details for job code: {job_code}")
         return jsonify({"job_details": job_details})
     except Exception as e:
         logger.error(f"Error in get_job_details endpoint: {str(e)}")
         return jsonify({"error": str(e)}), 500
+
+@app.route('/test', methods=['GET'])
+def test_connection():
+    return jsonify({"status": "ok", "message": "Backend is running"})
 
 if __name__ == '__main__':
     # Check if CEIPAL credentials are set
