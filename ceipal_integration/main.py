@@ -17,7 +17,11 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "http://localhost:8081",         # <-- Add your frontend dev server here
-        "http://127.0.0.1:8081"          # <-- Also allow this if frontend uses 127.0.0.1
+        "http://127.0.0.1:8081"    
+        "http://127.0.0.1:3000",
+            "http://localhost:5055",
+            "http://127.0.0.1:5055", "https://adeptaipro.com",
+            "https://seagreen-hedgehog-452490.hostingersite.com/"      # <-- Also allow this if frontend uses 127.0.0.1
     ],
     allow_credentials=True,
     allow_methods=["*"],
