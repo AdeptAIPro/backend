@@ -27,7 +27,9 @@ CORS(app, resources={
             "http://localhost:3000",
             "http://127.0.0.1:3000",
             "http://localhost:5055",
-            "http://127.0.0.1:5055"
+            "http://127.0.0.1:5055",
+            "https://adeptaipro.com",
+            "https://seagreen-hedgehog-452490.hostingersite.com/"
         ],
         "supports_credentials": True,
         "allow_headers": ["Content-Type", "Authorization", "Accept"],
