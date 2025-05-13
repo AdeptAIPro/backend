@@ -39,7 +39,7 @@ class CeipalJobPostingsAPI:
             
         return data
 
-    def get_job_postings(self, paging_length: int = 200) -> List[JobPosting]:
+    def get_job_postings(self, paging_length: int = 60) -> List[JobPosting]:
         """Fetch job postings using the CEIPAL API"""
         token = self.auth.get_token()
         if not token:
