@@ -702,5 +702,5 @@ if __name__ == '__main__':
     if not all([os.getenv(v) for v in ["CEIPAL_EMAIL", "CEIPAL_PASSWORD", "CEIPAL_API_KEY"]]):
         logger.error("Missing CEIPAL credentials.")
     else:
-        app.run(host='0.0.0.0', port=5055, debug=True)
+        app.run(host='0.0.0.0', port=8000, debug=True)
 
